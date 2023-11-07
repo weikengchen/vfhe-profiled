@@ -1,30 +1,34 @@
 use crate::{ggsw::decomposition, ELL, LWE_DIM};
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, Rng, CryptoRng, RngCore};
 use rand_distr::{Distribution, Normal};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct LweCiphertext {
-    pub mask: Vec<u64>,
+    pub mask: [u64; LWE_DIM],
     pub body: u64,
 }
 
-pub type LweSecretKey = Vec<u64>;
+pub type LweSecretKey = [bool; LWE_DIM];
 pub type KeySwitchingKey = Vec<LweCiphertext>;
 
 impl LweCiphertext {
-    pub fn encrypt(mu: u64, sk: &LweSecretKey) -> LweCiphertext {
+    pub fn encrypt<R: CryptoRng + RngCore>(prng: &mut R, mu: u64, sk: &LweSecretKey) -> LweCiphertext {
         let sigma = f64::powf(2.0, 29.0);
         let normal = Normal::new(0.0, sigma).unwrap();
 
-        let e = normal.sample(&mut rand::thread_rng()).round() as i64;
+        let e = normal.sample(prng).round() as i64;
         let mu_star = mu.wrapping_add_signed(e);
 
-        let mask: Vec<u64> = (0..LWE_DIM).map(|_| rand::random::<u64>()).collect();
+        let mut mask =  [0u64; LWE_DIM];
+
+        for i in 0.. LWE_DIM {
+            mask[i] = prng.gen::<u64>();
+        }
 
         let mut body = 0u64;
         for i in 0..LWE_DIM {
-            if sk[i] == 1 {
+            if sk[i] {
                 body = body.wrapping_add(mask[i]);
             }
         }
@@ -37,7 +41,7 @@ impl LweCiphertext {
     pub fn decrypt(self, sk: &LweSecretKey) -> u64 {
         let mut body: u64 = 0u64;
         for i in 0..LWE_DIM {
-            if sk[i] == 1 {
+            if sk[i] {
                 body = body.wrapping_add(self.mask[i]);
             }
         }
@@ -48,7 +52,7 @@ impl LweCiphertext {
     pub fn decrypt_modswitched(self, sk: &LweSecretKey) -> u64 {
         let mut dot_prod = 0u64;
         for i in 0..LWE_DIM {
-            if sk[i] == 1 {
+            if sk[i] {
                 dot_prod = (dot_prod + self.mask[i]) % (2 * LWE_DIM as u64);
             }
         }
@@ -57,12 +61,11 @@ impl LweCiphertext {
     }
 
     pub fn add(self, rhs: Self) -> Self {
-        let mask = self
-            .mask
-            .iter()
-            .zip(rhs.mask)
-            .map(|(a, b)| a.wrapping_add(b))
-            .collect();
+        let mut mask = [0u64; LWE_DIM];
+
+        for i in 0..LWE_DIM {
+            mask[i] = self.mask[i].wrapping_add(rhs.mask[i]);
+        }
 
         let body = self.body.wrapping_add(rhs.body);
 
@@ -70,12 +73,11 @@ impl LweCiphertext {
     }
 
     pub fn sub(self, rhs: &Self) -> Self {
-        let mask = self
-            .mask
-            .iter()
-            .zip(&rhs.mask)
-            .map(|(a, b)| a.wrapping_sub(*b))
-            .collect();
+        let mut mask = [0u64; LWE_DIM];
+
+        for i in 0..LWE_DIM {
+            mask[i] = self.mask[i].wrapping_sub(rhs.mask[i]);
+        }
 
         let body = self.body.wrapping_sub(rhs.body);
 
@@ -83,7 +85,11 @@ impl LweCiphertext {
     }
 
     pub fn multiply_constant_assign(&mut self, constant: u64) -> &mut Self {
-        self.mask = self.mask.iter().map(|a| a.wrapping_mul(constant)).collect();
+        let mut mask = [0u64; LWE_DIM];
+
+        for i in 0..LWE_DIM {
+            mask[i] = self.mask[i].wrapping_mul(constant);
+        }
 
         self.body = self.body.wrapping_mul(constant);
 
@@ -92,7 +98,11 @@ impl LweCiphertext {
 
     /// Switch from modulus 2^64 to 2N, with 2N = 2^11.
     pub fn modswitch(&self) -> Self {
-        let mask = self.mask.iter().map(|a| ((a >> 52) + 1) >> 1).collect();
+        let mut mask = [0u64; LWE_DIM];
+
+        for i in 0..LWE_DIM {
+            mask[i] = ((self.mask[i] >> 52) + 1) >> 1;
+        }
 
         let body = ((self.body >> 52) + 1) >> 1;
 
@@ -121,16 +131,16 @@ impl LweCiphertext {
 impl Default for LweCiphertext {
     fn default() -> Self {
         LweCiphertext {
-            mask: vec![0u64; LWE_DIM],
+            mask: [0u64; LWE_DIM],
             body: 0u64,
         }
     }
 }
 
-pub fn lwe_keygen() -> LweSecretKey {
-    let mut sk = Vec::<u64>::with_capacity(LWE_DIM);
-    for _ in 0..LWE_DIM {
-        sk.push(thread_rng().gen_range(0..=1));
+pub fn lwe_keygen<R: CryptoRng + RngCore>(prng: &mut R) -> LweSecretKey {
+    let mut sk = [false; LWE_DIM];
+    for i in 0..LWE_DIM {
+        sk[i] = prng.gen_bool(0.5);
     }
 
     sk
@@ -138,13 +148,13 @@ pub fn lwe_keygen() -> LweSecretKey {
 
 /// Encrypts `sk1` under `sk2`.
 // TODO: generalize for k > 1
-pub fn compute_ksk(sk1: &LweSecretKey, sk2: &LweSecretKey) -> KeySwitchingKey {
+pub fn compute_ksk<R: CryptoRng + RngCore>(prng: &mut R, sk1: &LweSecretKey, sk2: &LweSecretKey) -> KeySwitchingKey {
     let mut ksk = vec![];
 
     for bit in sk1.iter().take(LWE_DIM) {
         for j in 0..ELL {
-            let mu = bit << (40 + (8 * (j + 1))); // lg(B) = 8
-            ksk.push(LweCiphertext::encrypt(mu, sk2));
+            let mu = (*bit as u64) << (40 + (8 * (j + 1))); // lg(B) = 8
+            ksk.push(LweCiphertext::encrypt(prng, mu, sk2));
         }
     }
     ksk
@@ -158,14 +168,16 @@ mod tests {
 
     #[test]
     fn test_keyswitch() {
-        let sk1 = lwe_keygen();
-        let sk2 = lwe_keygen();
-        let ksk = compute_ksk(&sk1, &sk2); //encrypt sk1 under sk2
+        let prng = &mut thread_rng();
+
+        let sk1 = lwe_keygen(prng);
+        let sk2 = lwe_keygen(prng);
+        let ksk = compute_ksk(prng,&sk1, &sk2); //encrypt sk1 under sk2
 
         for _ in 0..100 {
-            let msg = thread_rng().gen_range(0..16);
+            let msg = prng.gen_range(0..16);
 
-            let ct1 = LweCiphertext::encrypt(encode(msg), &sk1);
+            let ct1 = LweCiphertext::encrypt(prng,encode(msg), &sk1);
 
             let res = ct1.keyswitch(&mut ksk.clone()).decrypt(&sk2);
 
@@ -177,10 +189,12 @@ mod tests {
 
     #[test]
     fn test_keygen_enc_dec() {
-        let sk = lwe_keygen();
+        let prng = &mut thread_rng();
+
+        let sk = lwe_keygen(prng);
         for _ in 0..100 {
             let msg = thread_rng().gen_range(0..16);
-            let ct = LweCiphertext::encrypt(encode(msg), &sk);
+            let ct = LweCiphertext::encrypt(prng,encode(msg), &sk);
             let pt = decode(ct.decrypt(&sk));
             assert_eq!(pt, msg);
         }
@@ -188,12 +202,14 @@ mod tests {
 
     #[test]
     fn test_add() {
-        let sk = lwe_keygen();
+        let prng = &mut thread_rng();
+
+        let sk = lwe_keygen(prng);
         for _ in 0..100 {
             let msg1 = thread_rng().gen_range(0..16);
             let msg2 = thread_rng().gen_range(0..16);
-            let ct1 = LweCiphertext::encrypt(encode(msg1), &sk);
-            let ct2 = LweCiphertext::encrypt(encode(msg2), &sk);
+            let ct1 = LweCiphertext::encrypt(prng,encode(msg1), &sk);
+            let ct2 = LweCiphertext::encrypt(prng,encode(msg2), &sk);
             let res = ct1.add(ct2);
             let pt = decode(res.decrypt(&sk));
             assert_eq!(pt, (msg1 + msg2) % 16);
@@ -202,12 +218,14 @@ mod tests {
 
     #[test]
     fn test_sub() {
-        let sk = lwe_keygen();
+        let prng = &mut thread_rng();
+
+        let sk = lwe_keygen(prng);
         for _ in 0..100 {
             let msg1 = thread_rng().gen_range(0..16);
             let msg2 = thread_rng().gen_range(0..16);
-            let ct1 = LweCiphertext::encrypt(encode(msg1), &sk);
-            let ct2 = LweCiphertext::encrypt(encode(msg2), &sk);
+            let ct1 = LweCiphertext::encrypt(prng,encode(msg1), &sk);
+            let ct2 = LweCiphertext::encrypt(prng,encode(msg2), &sk);
             let res = ct1.sub(&ct2);
             let pt = decode(res.decrypt(&sk));
             assert_eq!(pt, (msg1.wrapping_sub(msg2)) % 16);
@@ -216,10 +234,12 @@ mod tests {
 
     #[test]
     fn test_modswitch() {
+        let prng = &mut thread_rng();
+
         for _ in 0..100 {
-            let sk = lwe_keygen();
+            let sk = lwe_keygen(prng);
             let msg = thread_rng().gen_range(0..16);
-            let ct = LweCiphertext::encrypt(encode(msg), &sk);
+            let ct = LweCiphertext::encrypt(prng,encode(msg), &sk);
             let modswitched = ct.modswitch();
             let pt = decode_modswitched(modswitched.decrypt_modswitched(&sk));
             assert_eq!(pt, msg);

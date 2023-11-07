@@ -1,20 +1,23 @@
+use rand::{CryptoRng, Rng, RngCore};
 use crate::{glwe::GlweCiphertext, k, poly::ResiduePoly, ELL, N};
 use crate::{glwe::SecretKey, lwe::LweSecretKey};
 use serde::{Deserialize, Serialize};
 
 pub type BootstrappingKey = Vec<GgswCiphertext>;
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy)]
 pub struct GgswCiphertext {
-    z_m_gt: Vec<GlweCiphertext>,
+    pub z_m_gt: [GlweCiphertext; (k + 1) * ELL],
 }
 
 impl GgswCiphertext {
-    pub fn encrypt(msg: u8, sk: &SecretKey) -> Self {
+    pub fn encrypt<R: RngCore+CryptoRng>(prng: &mut R, msg: u8, sk: &SecretKey) -> Self {
         // initialize Z
-        let mut z_m_gt: Vec<GlweCiphertext> = (0..(k + 1) * ELL)
-            .map(|_| GlweCiphertext::encrypt(0, sk))
-            .collect();
+        let mut z_m_gt = [GlweCiphertext::default(); (k + 1) * ELL];
+
+        for i in 0..(k + 1) * ELL {
+            z_m_gt[i] = GlweCiphertext::encrypt(prng, 0, sk);
+        }
 
         // m * g, g being [q/B, ..., q/B^l]
         let mut mg = [0u64; ELL];
@@ -106,9 +109,9 @@ pub fn cmux(ctb: &GgswCiphertext, ct1: &GlweCiphertext, ct2: &GlweCiphertext) ->
 }
 
 /// Encrypts the bits of `s` under `sk`
-pub fn compute_bsk(s: &LweSecretKey, sk: &SecretKey) -> BootstrappingKey {
+pub fn compute_bsk<R: CryptoRng + RngCore>(prng: &mut R, s: &LweSecretKey, sk: &SecretKey) -> BootstrappingKey {
     let bsk: Vec<GgswCiphertext> = (0..N)
-        .map(|i| GgswCiphertext::encrypt(s[i].try_into().unwrap(), sk))
+        .map(|i| GgswCiphertext::encrypt(prng,s[i].try_into().unwrap(), sk))
         .collect();
 
     bsk
@@ -123,10 +126,12 @@ mod tests {
 
     #[test]
     fn test_keygen_enc_dec() {
-        let sk = keygen();
+        let prng = &mut thread_rng();
+
+        let sk = keygen(prng);
         for _ in 0..100 {
             let msg = thread_rng().gen_range(0..16);
-            let ct = GgswCiphertext::encrypt(msg, &sk);
+            let ct = GgswCiphertext::encrypt(prng,msg, &sk);
             let pt = ct.decrypt(&sk);
             assert_eq!(msg, pt as u8);
         }
@@ -134,12 +139,14 @@ mod tests {
 
     #[test]
     fn test_external_product() {
-        let sk = keygen();
+        let prng = &mut thread_rng();
+
+        let sk = keygen(prng);
         for _ in 0..100 {
             let msg1 = thread_rng().gen_range(0..16);
             let msg2 = thread_rng().gen_range(0..16);
-            let ct1 = GgswCiphertext::encrypt(msg1, &sk);
-            let ct2 = GlweCiphertext::encrypt(encode(msg2), &sk);
+            let ct1 = GgswCiphertext::encrypt(prng,msg1, &sk);
+            let ct2 = GlweCiphertext::encrypt(prng,encode(msg2), &sk);
             let res = ct1.external_product(&ct2);
             let pt = decode(res.decrypt(&sk));
             let expected: u8 = msg1 * msg2 % 16;
@@ -149,15 +156,17 @@ mod tests {
 
     #[test]
     fn test_cmux() {
+        let prng = &mut thread_rng();
+
         for _ in 0..100 {
-            let sk = keygen();
+            let sk = keygen(prng);
             let msg1 = thread_rng().gen_range(0..16);
             let msg2 = thread_rng().gen_range(0..16);
             let b = thread_rng().gen_range(0..2);
 
-            let ct1 = GlweCiphertext::encrypt(encode(msg1), &sk);
-            let ct2 = GlweCiphertext::encrypt(encode(msg2), &sk);
-            let ctb = GgswCiphertext::encrypt(b, &sk);
+            let ct1 = GlweCiphertext::encrypt(prng,encode(msg1), &sk);
+            let ct2 = GlweCiphertext::encrypt(prng,encode(msg2), &sk);
+            let ctb = GgswCiphertext::encrypt(prng,b, &sk);
 
             let res = cmux(&ctb, &ct1, &ct2);
 
@@ -168,15 +177,17 @@ mod tests {
 
     #[test]
     fn test_cmux_trivial() {
+        let prng = &mut thread_rng();
+
         for _ in 0..100 {
-            let sk = keygen();
+            let sk = keygen(prng);
             let msg1 = thread_rng().gen_range(0..16);
             let msg2 = thread_rng().gen_range(0..16);
             let b = thread_rng().gen_range(0..2);
 
             let ct1 = GlweCiphertext::trivial_encrypt(encode(msg1));
             let ct2 = GlweCiphertext::trivial_encrypt(encode(msg2));
-            let ctb = GgswCiphertext::encrypt(b, &sk);
+            let ctb = GgswCiphertext::encrypt(prng,b, &sk);
 
             let res = cmux(&ctb, &ct1, &ct2);
 

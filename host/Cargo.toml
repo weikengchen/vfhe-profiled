@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 methods = { path = "../methods" }
-risc0-zkvm = { version = "0.17.0" }
+risc0-zkvm = { version = "0.19.0", features = ["metal"] }
 serde = "1.0"
 ttfhe = { path = "../ttfhe" }
+rand_chacha = "0.3.1"
