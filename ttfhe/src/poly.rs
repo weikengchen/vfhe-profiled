@@ -1,6 +1,5 @@
 use crate::N;
-use rand::{thread_rng, Rng, CryptoRng, RngCore};
-use serde::{Deserialize, Serialize};
+use rand::{Rng, CryptoRng, RngCore};
 
 /// Represents an element of Z_{q}\[X\]/(X^N + 1) with implicit q = 2^64.
 #[derive(Clone, Copy)]

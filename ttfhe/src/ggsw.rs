@@ -1,8 +1,6 @@
-use rand::{CryptoRng, Rng, RngCore};
+use rand::{CryptoRng, RngCore};
 use crate::{glwe::GlweCiphertext, k, poly::ResiduePoly, ELL, N};
 use crate::{glwe::SecretKey, lwe::LweSecretKey};
-use serde::{Deserialize, Serialize};
-
 pub type BootstrappingKey = Vec<GgswCiphertext>;
 
 #[derive(Default, Clone, Copy)]

@@ -1,5 +1,3 @@
-#![feature(const_for)]
-
 pub mod ggsw;
 pub mod glwe;
 pub mod lwe;

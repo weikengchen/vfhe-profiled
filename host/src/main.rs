@@ -5,7 +5,6 @@ use risc0_zkvm::{
 };
 
 fn main() {
-    println!("{:?}", std::time::Instant::now());
     let mut write_buf = Vec::new();
 
     let env = ExecutorEnv::builder()
@@ -19,5 +18,4 @@ fn main() {
     receipt.verify(METHOD_NAME_ID).unwrap();
 
     println!("Result: {}", write_buf.len() as u64);
-    println!("{:?}", std::time::Instant::now());
 }

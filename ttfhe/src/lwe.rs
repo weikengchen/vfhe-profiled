@@ -1,8 +1,6 @@
 use crate::{ggsw::decomposition, ELL, LWE_DIM};
-use rand::{thread_rng, Rng, CryptoRng, RngCore};
+use rand::{Rng, CryptoRng, RngCore};
 use rand_distr::{Distribution, Normal};
-use serde::{Deserialize, Serialize};
-
 #[derive(Clone)]
 pub struct LweCiphertext {
     pub mask: [u64; LWE_DIM],
