@@ -18,7 +18,6 @@ fn main() {
     let receipt = prover.prove_elf(env, METHOD_NAME_ELF).unwrap();
     receipt.verify(METHOD_NAME_ID).unwrap();
 
-    // Instant { tv_sec: 69099, tv_nsec: 157072166 }
     println!("Result: {}", write_buf.len() as u64);
     println!("{:?}", std::time::Instant::now());
 }
