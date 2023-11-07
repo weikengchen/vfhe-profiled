@@ -5,10 +5,44 @@ use risc0_zkvm::{
 };
 
 fn main() {
-    let mut write_buf = Vec::new();
+    /*
+    use std::fs::File;
+    use std::io::Write;
+    use rand_chacha::rand_core::SeedableRng;
+    use ttfhe::ggsw::{compute_bsk};
+    use ttfhe::glwe::{keygen, SecretKey};
+    use ttfhe::lwe::{lwe_keygen, LweCiphertext};
+    use ttfhe::utils::encode;
+    use ttfhe::glwe::GlweCiphertext;
+
+    let mut prng = rand_chacha::ChaChaRng::seed_from_u64(123456u64);
+    let sk1 = lwe_keygen(&mut prng);
+    let sk2 = keygen(&mut prng);
+    let bsk = compute_bsk(&mut prng, &sk1, &sk2);
+    let c = LweCiphertext::encrypt(&mut prng,encode(2), &sk1).modswitch();
+
+    let buf = unsafe { std::mem::transmute::<&bool, &[u8; 1024]>(&sk1[0]) };
+    let mut f = File::create("./sk1").unwrap();
+    f.write(buf).unwrap();
+
+    let buf = unsafe { std::mem::transmute::<&SecretKey, &[u8; 8192]>(&sk2) };
+    let mut f = File::create("./sk2").unwrap();
+    f.write(buf).unwrap();
+
+    let buf = unsafe { std::mem::transmute::<&u64, &[u8; 1048576]>(&bsk[0].z_m_gt[0].mask[0].coefs[0]) };
+    let mut f = File::create("./bsk").unwrap();
+    f.write(buf).unwrap();
+
+    let buf = unsafe { std::mem::transmute::<&LweCiphertext, &[u8; 8200]>(&c) };
+    let mut f = File::create("./c").unwrap();
+    f.write(buf).unwrap();
+
+    return;
+    */
+
+    let start_time = std::time::Instant::now();
 
     let env = ExecutorEnv::builder()
-        .stdout(&mut write_buf)
         .build()
         .unwrap();
 
@@ -17,5 +51,5 @@ fn main() {
     let receipt = prover.prove_elf(env, METHOD_NAME_ELF).unwrap();
     receipt.verify(METHOD_NAME_ID).unwrap();
 
-    println!("Result: {}", write_buf.len() as u64);
+    println!("Time: {}", start_time.elapsed().as_secs_f64());
 }

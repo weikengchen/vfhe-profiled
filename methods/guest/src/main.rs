@@ -1,34 +1,48 @@
 #![no_main]
-#![feature(new_uninit)]
 
 use risc0_zkvm::guest::env;
+use core::hint::black_box;
 use ttfhe::{N,
-    ggsw::GgswCiphertext,
-    glwe::SecretKey,
-    lwe::LweSecretKey
+    ggsw::{cmux, GgswCiphertext},
+    glwe::GlweCiphertext,
+    lwe::LweCiphertext
 };
 risc0_zkvm::guest::entry!(main);
 
-static SK1_BYTES: &[u8] = include_bytes!("./sk1");
-static SK2_BYTES: &[u8; 8192] = include_bytes!("./sk2");
-static BSK_BYTES: &[u8] = include_bytes!("./bsk");
+static BSK_BYTES: &[u8] = include_bytes!("../../../bsk");
+static C_BYTES: &[u8] = include_bytes!("../../../c");
 
 pub fn main() {
-    let sk1 = unsafe {
-        std::mem::transmute::<&u8, &LweSecretKey>(&SK1_BYTES[0])
-    };
-    eprintln!("{}", sk1[0]);
-    eprintln!("{}", env::get_cycle_count());
+    let init_cycle = env::get_cycle_count();
 
-    let sk2 = unsafe {
-        std::mem::transmute::<&u8, &SecretKey>(&SK2_BYTES[0])
-    };
-    eprintln!("{}", sk2.polys[0].coefs[0]);
-    eprintln!("{}", env::get_cycle_count());
+    let bsk = black_box(unsafe {
+        std::mem::transmute::<&u8, &[GgswCiphertext; 16]>(&BSK_BYTES[0])
+    });
 
-    let bsk = unsafe {
-        std::mem::transmute::<&u8, &[GgswCiphertext; N]>(&BSK_BYTES[0])
-    };
-    eprintln!("{}", bsk[0].z_m_gt[0].body.coefs[0]);
-    eprintln!("{}", env::get_cycle_count());
+    let c = black_box(unsafe {
+        std::mem::transmute::<&u8, &LweCiphertext>(&C_BYTES[0])
+    });
+
+    let after_load_cycle = env::get_cycle_count();
+    eprintln!("load keys: {} {}", init_cycle, after_load_cycle);
+
+    let lut = black_box(GlweCiphertext::trivial_encrypt_lut_poly());
+    let after_lut_cycle = env::get_cycle_count();
+    eprintln!("lut: {}", after_lut_cycle);
+
+    let mut c_prime = lut.clone();
+    c_prime.rotate_trivial((2 * N as u64) - c.body);
+
+    let after_initial_rotate = env::get_cycle_count();
+    eprintln!("trivial rotate: {}", after_initial_rotate);
+
+    for i in 0..1 {
+        let rotated = c_prime.rotate(c.mask[i]);
+        let after_rotate = env::get_cycle_count();
+        eprintln!("rotate: {}", after_rotate);
+
+        c_prime = cmux(&bsk[i], &c_prime, &rotated);
+        let after_cmux = env::get_cycle_count();
+        eprintln!("cmux: {}", after_cmux);
+    }
 }

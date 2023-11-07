@@ -66,7 +66,7 @@ impl GgswCiphertext {
 // }
 
 /// Decomposition of a GLWE ciphertext.
-fn apply_g_inverse(ct: &GlweCiphertext) -> Vec<ResiduePoly> {
+pub fn apply_g_inverse(ct: &GlweCiphertext) -> Vec<ResiduePoly> {
     let mut res: [ResiduePoly; (k + 1) * ELL] = Default::default();
 
     for i in 0..N {
@@ -108,9 +108,11 @@ pub fn cmux(ctb: &GgswCiphertext, ct1: &GlweCiphertext, ct2: &GlweCiphertext) ->
 
 /// Encrypts the bits of `s` under `sk`
 pub fn compute_bsk<R: CryptoRng + RngCore>(prng: &mut R, s: &LweSecretKey, sk: &SecretKey) -> BootstrappingKey {
-    let bsk: Vec<GgswCiphertext> = (0..N)
-        .map(|i| GgswCiphertext::encrypt(prng,s[i].try_into().unwrap(), sk))
-        .collect();
+    let mut bsk = Vec::<GgswCiphertext>::new();
+
+    for i in 0..N {
+        bsk.push(GgswCiphertext::encrypt(prng, s[i].try_into().unwrap(), sk));
+    }
 
     bsk
 }

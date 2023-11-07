@@ -97,7 +97,7 @@ impl GlweCiphertext {
     /// Performs the blind rotation of `self`.
     // `self` is assumed to be a trivial encryption
     // `c` is a modswitched LWE ciphertext (modulus = 2N)
-    pub fn blind_rotate(&self, c: LweCiphertext, bsk: &BootstrappingKey) -> Self {
+    pub fn blind_rotate(&self, c: &LweCiphertext, bsk: &BootstrappingKey) -> Self {
         let mut c_prime = self.clone();
 
         c_prime.rotate_trivial((2 * N as u64) - c.body);
