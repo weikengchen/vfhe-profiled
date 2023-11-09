@@ -121,6 +121,38 @@ impl Default for ResiduePoly {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct ShortResiduePoly {
+    pub coefs: [u32; N],
+}
+
+impl ShortResiduePoly {
+    pub fn mul(&self, rhs: &ResiduePoly) -> ResiduePoly {
+        let mut coefs = [0u64; N];
+        for i in 0..N {
+            let mut coef = 0u64;
+            for j in 0..i + 1 {
+                coef = coef.wrapping_add(rhs.coefs[i - j].wrapping_mul(self.coefs[j] as u64));
+            }
+            for j in i + 1..N {
+                coef = coef.wrapping_sub(rhs.coefs[N - j + i].wrapping_mul(self.coefs[j] as u64));
+            }
+            coefs[i] = coef;
+        }
+        ResiduePoly { coefs }
+    }
+}
+
+impl Default for ShortResiduePoly {
+    fn default() -> Self {
+        ShortResiduePoly {
+            coefs: [0u32; N],
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use rand::{thread_rng, Rng};

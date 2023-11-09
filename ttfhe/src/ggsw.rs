@@ -1,6 +1,8 @@
 use rand::{CryptoRng, RngCore};
 use crate::{glwe::GlweCiphertext, k, poly::ResiduePoly, ELL, N};
 use crate::{glwe::SecretKey, lwe::LweSecretKey};
+use crate::poly::ShortResiduePoly;
+
 pub type BootstrappingKey = Vec<GgswCiphertext>;
 
 #[derive(Default, Clone, Copy)]
@@ -66,21 +68,21 @@ impl GgswCiphertext {
 // }
 
 /// Decomposition of a GLWE ciphertext.
-pub fn apply_g_inverse(ct: &GlweCiphertext) -> Vec<ResiduePoly> {
-    let mut res: [ResiduePoly; (k + 1) * ELL] = Default::default();
+pub fn apply_g_inverse(ct: &GlweCiphertext) -> Vec<ShortResiduePoly> {
+    let mut res: [ShortResiduePoly; (k + 1) * ELL] = Default::default();
 
     for i in 0..N {
         // mask decomposition
         for j in 0..k {
             let (nu_2, nu_1) = decomposition(ct.mask[j].coefs[i]);
-            res[j * ELL].coefs[i] = nu_1 as u64;
-            res[j * ELL + 1].coefs[i] = nu_2 as u64;
+            res[j * ELL].coefs[i] = nu_1 as u32;
+            res[j * ELL + 1].coefs[i] = nu_2 as u32;
         }
 
         // body decomposition
         let (nu_2, nu_1) = decomposition(ct.body.coefs[i]);
-        res[(k + 1) * ELL - 2].coefs[i] = nu_1 as u64;
-        res[(k + 1) * ELL - 1].coefs[i] = nu_2 as u64;
+        res[(k + 1) * ELL - 2].coefs[i] = nu_1 as u32;
+        res[(k + 1) * ELL - 1].coefs[i] = nu_2 as u32;
     }
     res.to_vec()
 }
