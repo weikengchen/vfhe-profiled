@@ -1,6 +1,8 @@
-use crate::{ggsw::decomposition, ELL, LWE_DIM};
+use crate::LWE_DIM;
 use rand::{Rng, CryptoRng, RngCore};
 use rand_distr::{Distribution, Normal};
+use crate::utils::round_value;
+
 #[derive(Clone)]
 pub struct LweCiphertext {
     pub mask: [u64; LWE_DIM],
@@ -12,7 +14,7 @@ pub type KeySwitchingKey = Vec<LweCiphertext>;
 
 impl LweCiphertext {
     pub fn encrypt<R: CryptoRng + RngCore>(prng: &mut R, mu: u64, sk: &LweSecretKey) -> LweCiphertext {
-        let sigma = f64::powf(2.0, 29.0);
+        let sigma = f64::powf(2.0, 49.0);
         let normal = Normal::new(0.0, sigma).unwrap();
 
         let e = normal.sample(prng).round() as i64;
@@ -106,24 +108,27 @@ impl LweCiphertext {
 
         LweCiphertext { mask, body }
     }
+}
 
-    /// Switch to the key encrypted by `ksk`.
-    // TODO: generalize for k > 1
-    pub fn keyswitch(&self, ksk: &mut KeySwitchingKey) -> Self {
-        let mut keyswitched = LweCiphertext {
-            body: self.body,
-            ..Default::default()
-        };
+/// Approximate decomposition with lg(B) = 4 and ell = 4.
+/// Takes a polynomial coefficient in Z_{2^64} and decomposes its 16 MSBs in 4 integers in `[-8, 7] as u64`.
+pub fn decomposition_4_4(val: u64) -> [u64; 4] {
+    let mut ret = [0u64; 4];
+    let rounded_val = round_value(val);
 
-        for i in 0..LWE_DIM {
-            let (decomp_mask_1, decomp_mask_2) = decomposition(self.mask[i]);
-            keyswitched = keyswitched
-                .sub(ksk[ELL * i].multiply_constant_assign(decomp_mask_1 as u64))
-                .sub(ksk[(ELL * i) + 1].multiply_constant_assign(decomp_mask_2 as u64));
-        }
+    let mut carry = 0u64;
+    for i in 0..4 {
+        let mut res = ((rounded_val >> (4 * i)) & 0x0F) + carry;
 
-        keyswitched
+        let carry_bit = res & 8;
+
+        res = res.wrapping_sub(carry_bit << 1);
+        ret[i] = res;
+
+        carry = carry_bit >> 3;
     }
+
+    ret
 }
 
 impl Default for LweCiphertext {
@@ -150,8 +155,9 @@ pub fn compute_ksk<R: CryptoRng + RngCore>(prng: &mut R, sk1: &LweSecretKey, sk2
     let mut ksk = vec![];
 
     for bit in sk1.iter().take(LWE_DIM) {
-        for j in 0..ELL {
-            let mu = (*bit as u64) << (40 + (8 * (j + 1))); // lg(B) = 8
+        // 4 layers in the decomposition for the KSK
+        for j in 0..4 {
+            let mu = (*bit as u64) << (48 + (4 * j)); // lg(B) = 4
             ksk.push(LweCiphertext::encrypt(prng, mu, sk2));
         }
     }
@@ -160,30 +166,9 @@ pub fn compute_ksk<R: CryptoRng + RngCore>(prng: &mut R, sk1: &LweSecretKey, sk2
 
 #[cfg(test)]
 mod tests {
-    use crate::lwe::{compute_ksk, lwe_keygen, LweCiphertext};
+    use crate::lwe::{lwe_keygen, LweCiphertext};
     use crate::utils::{decode, decode_modswitched, encode};
     use rand::{thread_rng, Rng};
-
-    #[test]
-    fn test_keyswitch() {
-        let prng = &mut thread_rng();
-
-        let sk1 = lwe_keygen(prng);
-        let sk2 = lwe_keygen(prng);
-        let ksk = compute_ksk(prng,&sk1, &sk2); //encrypt sk1 under sk2
-
-        for _ in 0..100 {
-            let msg = prng.gen_range(0..16);
-
-            let ct1 = LweCiphertext::encrypt(prng,encode(msg), &sk1);
-
-            let res = ct1.keyswitch(&mut ksk.clone()).decrypt(&sk2);
-
-            let pt = decode(res);
-
-            assert_eq!(msg, pt);
-        }
-    }
 
     #[test]
     fn test_keygen_enc_dec() {

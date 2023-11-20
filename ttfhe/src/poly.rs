@@ -1,5 +1,7 @@
+use std::mem::MaybeUninit;
 use crate::N;
 use rand::{Rng, CryptoRng, RngCore};
+use crate::karatsuba::negacyclic_asymmetric_karatsuba_1024;
 
 /// Represents an element of Z_{q}\[X\]/(X^N + 1) with implicit q = 2^64.
 #[derive(Clone, Copy)]
@@ -124,30 +126,23 @@ impl Default for ResiduePoly {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct ShortResiduePoly {
-    pub coefs: [u32; N],
+    pub coefs: [i32; N],
 }
 
 impl ShortResiduePoly {
     pub fn mul(&self, rhs: &ResiduePoly) -> ResiduePoly {
-        let mut coefs = [0u64; N];
-        for i in 0..N {
-            let mut coef = 0u64;
-            for j in 0..i + 1 {
-                coef = coef.wrapping_add(rhs.coefs[i - j].wrapping_mul(self.coefs[j] as u64));
-            }
-            for j in i + 1..N {
-                coef = coef.wrapping_sub(rhs.coefs[N - j + i].wrapping_mul(self.coefs[j] as u64));
-            }
-            coefs[i] = coef;
+        let mut coefs = MaybeUninit::<[u64; N]>::uninit();
+        unsafe {
+            negacyclic_asymmetric_karatsuba_1024(&mut (*coefs.as_mut_ptr()), &self.coefs, &rhs.coefs);
+            ResiduePoly { coefs: coefs.assume_init() }
         }
-        ResiduePoly { coefs }
     }
 }
 
 impl Default for ShortResiduePoly {
     fn default() -> Self {
         ShortResiduePoly {
-            coefs: [0u32; N],
+            coefs: [0i32; N],
         }
     }
 }
@@ -165,7 +160,7 @@ mod tests {
         let prng = &mut thread_rng();
 
         for _ in 0..1000 {
-            let mut monomial_coefs = vec![0u64; N];
+            let mut monomial_coefs = [0u64; N];
             let monomial_non_null_term = prng.gen_range(0..2 * N);
 
             if monomial_non_null_term < 1024 {

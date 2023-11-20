@@ -15,6 +15,7 @@ opt-level = 3
 [profile.release]
 debug = 1
 lto = true
+incremental = true
 
 [profile.release.build-override]
 opt-level = 3
