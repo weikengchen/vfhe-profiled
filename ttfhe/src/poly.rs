@@ -1,7 +1,7 @@
-use std::mem::MaybeUninit;
-use crate::N;
-use rand::{Rng, CryptoRng, RngCore};
 use crate::karatsuba::negacyclic_asymmetric_karatsuba_1024;
+use crate::N;
+use rand::{CryptoRng, Rng, RngCore};
+use std::mem::MaybeUninit;
 
 /// Represents an element of Z_{q}\[X\]/(X^N + 1) with implicit q = 2^64.
 #[derive(Clone, Copy)]
@@ -12,9 +12,7 @@ pub struct ResiduePoly {
 
 impl ResiduePoly {
     pub fn new() -> Self {
-        ResiduePoly {
-            coefs: [0u64; N],
-        }
+        ResiduePoly { coefs: [0u64; N] }
     }
 
     pub fn add(&self, rhs: &ResiduePoly) -> Self {
@@ -76,7 +74,7 @@ impl ResiduePoly {
     }
 
     /// Generates a residue polynomial with random coefficients in \[0..1\]
-    pub fn get_random_bin<R: CryptoRng+RngCore>(prng: &mut R) -> Self {
+    pub fn get_random_bin<R: CryptoRng + RngCore>(prng: &mut R) -> Self {
         let mut coefs = [0u64; N];
         for i in 0..N {
             coefs[i] = prng.gen_range(0..=1);
@@ -117,9 +115,7 @@ impl ResiduePoly {
 
 impl Default for ResiduePoly {
     fn default() -> Self {
-        ResiduePoly {
-            coefs: [0u64; N],
-        }
+        ResiduePoly { coefs: [0u64; N] }
     }
 }
 
@@ -133,20 +129,23 @@ impl ShortResiduePoly {
     pub fn mul(&self, rhs: &ResiduePoly) -> ResiduePoly {
         let mut coefs = MaybeUninit::<[u64; N]>::uninit();
         unsafe {
-            negacyclic_asymmetric_karatsuba_1024(&mut (*coefs.as_mut_ptr()), &self.coefs, &rhs.coefs);
-            ResiduePoly { coefs: coefs.assume_init() }
+            negacyclic_asymmetric_karatsuba_1024(
+                &mut (*coefs.as_mut_ptr()),
+                &self.coefs,
+                &rhs.coefs,
+            );
+            ResiduePoly {
+                coefs: coefs.assume_init(),
+            }
         }
     }
 }
 
 impl Default for ShortResiduePoly {
     fn default() -> Self {
-        ShortResiduePoly {
-            coefs: [0i32; N],
-        }
+        ShortResiduePoly { coefs: [0i32; N] }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

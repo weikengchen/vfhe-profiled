@@ -1,9 +1,9 @@
 pub mod ggsw;
 pub mod glwe;
+mod karatsuba;
 pub mod lwe;
 pub mod poly;
 pub mod utils;
-mod karatsuba;
 
 /// Decomposition basis. This value is used implicitely.
 // pub const B: usize = 256;

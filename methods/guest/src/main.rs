@@ -1,6 +1,5 @@
-#![no_main]
+mod cycle_trace;
 
-use risc0_zkvm::guest::env;
 use core::hint::black_box;
 use ttfhe::{N,
     ggsw::{cmux, GgswCiphertext},
@@ -13,36 +12,40 @@ static BSK_BYTES: &[u8] = include_bytes!("../../../bsk");
 static C_BYTES: &[u8] = include_bytes!("../../../c");
 
 pub fn main() {
-    let init_cycle = env::get_cycle_count();
+    cycle_trace::init_trace_logger();
+    start_timer!("Total");
+
+    start_timer!("Load the bootstrapping key");
 
     let bsk = black_box(unsafe {
         std::mem::transmute::<&u8, &[GgswCiphertext; 16]>(&BSK_BYTES[0])
     });
 
+    stop_start_timer!("Load the ciphertext to be bootstrapped");
+
     let c = black_box(unsafe {
         std::mem::transmute::<&u8, &LweCiphertext>(&C_BYTES[0])
     });
 
-    let after_load_cycle = env::get_cycle_count();
-    eprintln!("load keys: {} {}", init_cycle, after_load_cycle);
+    stop_start_timer!("Perform trivial encryption and rotation");
 
     let lut = black_box(GlweCiphertext::trivial_encrypt_lut_poly());
-    let after_lut_cycle = env::get_cycle_count();
-    eprintln!("lut: {}", after_lut_cycle);
-
     let mut c_prime = lut.clone();
     c_prime.rotate_trivial((2 * N as u64) - c.body);
 
-    let after_initial_rotate = env::get_cycle_count();
-    eprintln!("trivial rotate: {}", after_initial_rotate);
+    stop_start_timer!("Perform one step of the bootstrapping");
 
     for i in 0..1 {
+        start_timer!("Rotate");
         let rotated = c_prime.rotate(c.mask[i]);
-        let after_rotate = env::get_cycle_count();
-        eprintln!("rotate: {}", after_rotate);
 
+        stop_start_timer!("Cmux");
         c_prime = cmux(&bsk[i], &c_prime, &rotated);
-        let after_cmux = env::get_cycle_count();
-        eprintln!("cmux: {}", after_cmux);
+
+        stop_timer!();
     }
+
+    stop_timer!();
+
+    stop_timer!();
 }

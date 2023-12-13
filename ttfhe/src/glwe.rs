@@ -1,9 +1,9 @@
-use rand::{CryptoRng, RngCore};
 use crate::ggsw::{cmux, BootstrappingKey};
 use crate::lwe::{LweCiphertext, LweSecretKey};
 use crate::utils::encode;
 use crate::P;
 use crate::{k, poly::ResiduePoly, LWE_DIM, N};
+use rand::{CryptoRng, RngCore};
 use rand_distr::{Distribution, Normal};
 
 #[derive(Clone, Copy, Default)]
@@ -16,11 +16,15 @@ pub struct GlweCiphertext {
 #[derive(Clone)]
 #[repr(C)]
 pub struct SecretKey {
-    pub polys: [ResiduePoly; k]
+    pub polys: [ResiduePoly; k],
 }
 
 impl GlweCiphertext {
-    pub fn encrypt<R: RngCore+CryptoRng>(prng: &mut R, mu: u64, sk: &SecretKey) -> GlweCiphertext {
+    pub fn encrypt<R: RngCore + CryptoRng>(
+        prng: &mut R,
+        mu: u64,
+        sk: &SecretKey,
+    ) -> GlweCiphertext {
         let sigma = f64::powf(2.0, 39.0);
         let normal = Normal::new(0.0, sigma).unwrap();
 
@@ -28,7 +32,7 @@ impl GlweCiphertext {
         let mu_star = mu.wrapping_add_signed(e);
 
         let mut mask = [ResiduePoly::default(); k];
-        for i in 0..k{
+        for i in 0..k {
             mask[i] = ResiduePoly::get_random(prng);
         }
 
@@ -81,10 +85,7 @@ impl GlweCiphertext {
 
         let body = self.body.coefs[0];
 
-        LweCiphertext {
-            mask: mask,
-            body,
-        }
+        LweCiphertext { mask: mask, body }
     }
 
     /// Trivially encrypts `mu`.
@@ -136,9 +137,7 @@ impl GlweCiphertext {
         }
 
         Self {
-            body: ResiduePoly {
-                coefs: lut_coefs,
-            },
+            body: ResiduePoly { coefs: lut_coefs },
             ..Default::default()
         }
     }
@@ -156,9 +155,9 @@ impl SecretKey {
     }
 }
 
-pub fn keygen<R: RngCore+CryptoRng>(prng: &mut R) -> SecretKey {
+pub fn keygen<R: RngCore + CryptoRng>(prng: &mut R) -> SecretKey {
     let mut polys = [ResiduePoly::default(); k];
-    for i in 0.. k{
+    for i in 0..k {
         polys[i] = ResiduePoly::get_random_bin(prng);
     }
 
@@ -179,7 +178,7 @@ mod tests {
         let sk = keygen(prng);
         for _ in 0..100 {
             let msg = prng.gen_range(0..16);
-            let ct = GlweCiphertext::encrypt(prng,encode(msg), &sk);
+            let ct = GlweCiphertext::encrypt(prng, encode(msg), &sk);
             let pt = decode(ct.decrypt(&sk));
             assert_eq!(pt, msg);
         }
@@ -193,8 +192,8 @@ mod tests {
         for _ in 0..100 {
             let msg1 = prng.gen_range(0..16);
             let msg2 = prng.gen_range(0..16);
-            let ct1 = GlweCiphertext::encrypt(prng,encode(msg1), &sk);
-            let ct2 = GlweCiphertext::encrypt(prng,encode(msg2), &sk);
+            let ct1 = GlweCiphertext::encrypt(prng, encode(msg1), &sk);
+            let ct2 = GlweCiphertext::encrypt(prng, encode(msg2), &sk);
             let res = ct1.add(&ct2);
             let pt = decode(res.decrypt(&sk));
             assert_eq!(pt, (msg1 + msg2) % 16);
@@ -209,8 +208,8 @@ mod tests {
         for _ in 0..100 {
             let msg1 = prng.gen_range(0..16);
             let msg2 = prng.gen_range(0..16);
-            let ct1 = GlweCiphertext::encrypt(prng,encode(msg1), &sk);
-            let ct2 = GlweCiphertext::encrypt(prng,encode(msg2), &sk);
+            let ct1 = GlweCiphertext::encrypt(prng, encode(msg1), &sk);
+            let ct2 = GlweCiphertext::encrypt(prng, encode(msg2), &sk);
             let res = ct1.sub(&ct2);
             let pt = decode(res.decrypt(&sk));
             assert_eq!(pt, (msg1.wrapping_sub(msg2)) % 16);
@@ -223,7 +222,7 @@ mod tests {
 
         let sk = keygen(prng);
         let msg = prng.gen_range(0..16);
-        let ct = GlweCiphertext::encrypt(prng,encode(msg), &sk);
+        let ct = GlweCiphertext::encrypt(prng, encode(msg), &sk);
 
         let sample_extracted: LweCiphertext = ct.sample_extract();
         let recoded_sk: LweSecretKey = sk.recode();
